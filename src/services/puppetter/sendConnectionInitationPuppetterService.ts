@@ -2,6 +2,8 @@ import { Browser, Page } from "puppeteer";
 import waitForTimeoutRandom from "../../helpers/waitForTimeoutRandomPuppetter";
 import captureProfileInformationPuppetterService from "./captureProfileInformationPuppetterService";
 import captureTextViaSelector from "../../helpers/captureTextViaSelectorPuppetter";
+import createInviteMessageConnection from "../../helpers/createInviteMessageConnection";
+import elementSelectorLinkedinConstants from "../../constants/elementSelectorLinkedinConstants";
 
 interface Options {
   keywords: string;
@@ -9,30 +11,39 @@ interface Options {
   inviteType?: "rh" | "dev";
 }
 
-const verifyModal = async (page: Page) => {
+const verifyLimitInviteMessagesSend = async (
+  page: Page,
+  onLimit?: () => Promise<void>
+) => {
   const modalTitle = (
     await captureTextViaSelector(
       page,
-      ".artdeco-modal-overlay .upsell-modal__header h2"
+      elementSelectorLinkedinConstants.TITLE_POPUP_ADD_NOTE_CONNECTION_INVITE
     )
   )?.toLowerCase();
   if (modalTitle === "no free personalized invitations left") {
     await page.click(
-      ".artdeco-modal-overlay button[data-test-modal-close-btn]"
+      elementSelectorLinkedinConstants.BUTTON_CLOSE_POPUP_ADD_NOTE_CONNECTION_INVITE
     );
-    waitForTimeoutRandom(page);
-
+    await waitForTimeoutRandom(page);
+    if (onLimit) await onLimit();
+    await page.click(
+      elementSelectorLinkedinConstants.BUTTON_POPUP_SEND_WITHOUT_A_NOTE_CONNECTION_INVITE
+    );
+    await waitForTimeoutRandom(page);
     return true;
   }
 
   return false;
 };
+
 const sendConnectionInitationPuppetterService = async (
   browser: Browser,
-  { keywords, inviteType = "rh", pageLimit = 5 }: Options = {}
+  { keywords, inviteType = "rh", pageLimit = 5 }: Options
 ) => {
   const page = await browser.newPage();
 
+  let connectionsMade = 0;
   let invitationsSent = 0;
   let pageIndex = 1;
 
@@ -49,13 +60,15 @@ const sendConnectionInitationPuppetterService = async (
     await waitForTimeoutRandom(page);
 
     const personElements = await page.$$(
-      ".reusable-search__entity-result-list .reusable-search__result-container .linked-area"
+      elementSelectorLinkedinConstants.PERSON_LIST_CONNECTION_INVITE
     );
 
     for (const personElement of personElements) {
       const username = await (
-        await personElement.$(".entity-result__title-text a.app-aware-link")
-      )?.evaluate((el) => el.href.match(/\/in\/([^/?]+)/)?.[1]);
+        await personElement.$(
+          elementSelectorLinkedinConstants.USERNAME_PERSON_LIST_CONNECTION_INVITE
+        )
+      )?.evaluate((el: any) => el.href.match(/\/in\/([^/?]+)/)?.[1]);
 
       const connectButton = await personElement.$("button");
 
@@ -72,25 +85,48 @@ const sendConnectionInitationPuppetterService = async (
         await waitForTimeoutRandom(page);
 
         await page.click(
-          ".artdeco-modal-overlay .artdeco-modal__actionbar button:nth-child(1)"
+          elementSelectorLinkedinConstants.BUTTON_POPUP_ADD_NOTE_CONNECTION_INVITE
         );
 
         await waitForTimeoutRandom(page);
 
-        const modalExists = await verifyModal(page);
+        const modalExists = await verifyLimitInviteMessagesSend(
+          page,
+          async () => {
+            await connectButton.click();
+            connectionsMade++;
+          }
+        );
 
         if (!modalExists) {
-          const inviteMessage = "";
-          await page.type("textarea.ember-text-area", inviteMessage);
+          const inviteMessage = await createInviteMessageConnection({
+            name: name ?? "",
+            description: description ?? "",
+            title: title ?? "",
+            type: inviteType,
+          });
+          await page.type(
+            elementSelectorLinkedinConstants.TEXT_AREA_POPUP_CONNECTION_INVITE,
+            inviteMessage
+          );
           await waitForTimeoutRandom(page);
-          await page.click(".artdeco-modal__actionbar button:nth-child(2)");
+          await page.click(
+            elementSelectorLinkedinConstants.BUTTON_POPUP_SUBMIT_CONNECTION_INVITE
+          );
           await waitForTimeoutRandom(page);
           invitationsSent++;
+          connectionsMade++;
         }
       }
     }
     pageIndex++;
   }
+
+  await page.close();
+  return {
+    invitationsSent,
+    connectionsMade,
+  };
 };
 
 export default sendConnectionInitationPuppetterService;

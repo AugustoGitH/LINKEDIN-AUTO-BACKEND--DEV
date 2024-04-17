@@ -8,7 +8,10 @@ import elementSelectorLinkedinConstants from "../../constants/elementSelectorLin
 const authSessionLinkedinPuppetterService = async (browser: Browser) => {
   const page = await browser.newPage();
 
-  const cookiesFilePath = path.resolve(__dirname, "../puppetter/cookies.json");
+  const cookiesFilePath = path.resolve(
+    __dirname,
+    "../../puppetter/cookies.json"
+  );
 
   let cookies;
 
